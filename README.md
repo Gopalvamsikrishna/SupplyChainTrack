@@ -14,6 +14,7 @@ This README covers: what it is, architecture, exact files, prerequisites, full c
 * Each handoff (transfer of custody) is a signed on-chain event.
 * Consumer scans product QR → frontend calls indexer API → verifies chain-of-custody, sensor readings, and shows human-friendly labels and risk.
 
+
 ---
 
 ## Repo layout (important files)
