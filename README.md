@@ -1,176 +1,75 @@
-Below is a ready-to-copy `README.md` you can paste into your repository root. It includes neat badges (using shields.io), a place to embed a demo GIF (place the file at `docs/demo.gif` or `frontend/public/demo.gif`), full setup instructions, troubleshooting, and nice sections for contributors.
-
-Copy the entire content below and save it as `README.md` in your repo root.
-
----
-
-```markdown
 # Supply-Chain Anti-Counterfeit with IoT Attestations
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Hardhat](https://img.shields.io/badge/Blockchain-Hardhat-purple)](https://hardhat.org)
-[![Frontend](https://img.shields.io/badge/Frontend-Next.js-black)](https://nextjs.org)
-[![Demo](https://img.shields.io/badge/Demo-live-gray)](#demo)
+**A lightweight demo/hackathon project** that records a chain-of-custody on-chain (Ethereum / Hardhat) and anchors IoT sensor readings (signed hashes).
+Includes: Solidity contract (`CustodyRegistry`), Node indexer + REST API (`indexer.js`) with SQLite, a `demoFlow` script to exercise the system, and a Next.js frontend with QR scanning and verification UI.
 
-> Lightweight hackathon demo that records an immutable chain-of-custody on-chain and anchors IoT sensor readings.  
-> Consumer scans a QR → the UI verifies provenance, sensor history and displays a simple trust score.
+This README covers: what it is, architecture, exact files, prerequisites, full commands (Windows & \*nix), `.env` example, how to run everything end-to-end, troubleshooting tips, and suggested next steps.
 
 ---
 
-## Demo (gif)
+## Quick summary (elevator pitch)
 
-> Add a short demo GIF to the repo (recommended paths: `docs/demo.gif` or `frontend/public/demo.gif`).  
-> The embed below expects `docs/demo.gif`. If you place the gif elsewhere, update the path.
-
-![Demo: Verify a Batch](docs/demo.gif)
-
----
-
-## What is this?
-
-This project demonstrates a simple supply-chain anti-counterfeit proof-of-concept using:
-- an on-chain **CustodyRegistry** (Solidity / Hardhat),
-- a **Node/Express indexer** that listens for events, stores metadata in SQLite and exposes `/verify/:batchId`,
-- a **Next.js frontend** with QR scanning for consumer verification,
-- simple simulated IoT sensor anchors (demo script).
-
-It’s built for learning / hackathon demos — **not production**.
+* Manufacturer registers a product batch on-chain.
+* IoT devices sign sensor readings; hashes are anchored on-chain and raw payloads are stored in the indexer DB (for UI).
+* Each handoff (transfer of custody) is a signed on-chain event.
+* Consumer scans product QR → frontend calls indexer API → verifies chain-of-custody, sensor readings, and shows human-friendly labels and risk.
 
 ---
 
-## Features
-
-- Register product batches on-chain (batch ID + IPFS CID)
-- Log custody transfers (manufacturer → distributor → retailer)
-- Anchor IoT sensor reading hashes on-chain (signed by devices)
-- Store raw payloads in indexer DB for UI display
-- Consumer QR scan → shows custody timeline, sensor readings, and risk label
-- Demo scripts to simulate the full flow
-
----
-
-## Repo layout (important)
+## Repo layout (important files)
 
 ```
-
 supplychain-hack/
 ├─ contracts/
 │  └─ CustodyRegistry.sol
 ├─ scripts/
-│  ├─ demoFlow\.js
-│  ├─ print\_handoffs.js
-│  ├─ migrate\_add\_actors\_and\_payload\_cols.js
-│  └─ seed\_actors.js
-├─ indexer.js
-├─ supplychain.sqlite          # local DB (gitignored)
+│  ├─ demoFlow.js
+│  ├─ inspect_recent_txs.js
+│  ├─ migrate_add_actors_and_payload_cols.js
+│  ├─ seed_actors.js
+│  └─ print_handoffs.js
+├─ artifacts/          # Hardhat compiled output (ignored in git)
+├─ indexer.js          # Node/Express + sqlite indexer + /verify API + /storePayload endpoint
+├─ supplychain.sqlite  # local DB (ignored in git)
 ├─ package.json
-├─ .env                       # local env (gitignored)
-├─ frontend/                   # Next.js app
+├─ .env                # local environment (ignored)
+├─ frontend/           # Next.js app (can be part of monorepo or submodule)
 │  └─ app/verify/page.tsx
 └─ README.md
-
-````
+```
 
 ---
 
-## Prerequisites
+## Requirements
 
-- Node.js v16+ (v18 or v22 recommended)
-- npm
-- Git
+* Node.js v16+ (v18–22 works; in examples we used v22)
+* npm (or yarn)
+* Git
+* Windows / macOS / Linux (commands below include both Windows and Bash examples)
 
-> Windows users: if PowerShell blocks `npx`, run commands in **CMD** or **Git Bash**.
+NPM packages used (dev & runtime):
 
----
-
-## Quickstart (end-to-end)
-
-Open multiple terminals and follow these steps in order. Commands are shown for Unix/Git Bash and work in Windows CMD too.
-
-### 1. Clone & install
-
-```bash
-git clone <your-repo-url>
-cd supplychain-hack
-npm install
-# frontend deps
-cd frontend
-npm install
-cd ..
-````
-
-If you see peer dependency errors while installing, try:
-
-```bash
-npm install --legacy-peer-deps
-```
-
-### 2. Compile contracts
-
-```bash
-npx hardhat compile
-```
-
-### 3. Start local blockchain (Hardhat node)
-
-Keep this terminal open:
-
-```bash
-npx hardhat node
-```
-
-### 4. Start indexer (API & DB)
-
-Open a new terminal:
-
-```bash
-node indexer.js
-```
-
-The indexer will:
-
-* connect to the local node,
-* index past events from `START_BLOCK`,
-* subscribe to live events,
-* expose `GET /verify/:batchId` and `POST /storePayload`.
-
-### 5. Run demo flow (register, anchor, transfer)
-
-In a new terminal:
-
-```bash
-npx hardhat run scripts/demoFlow.js --network localhost
-```
-
-`demoFlow` will deploy (if needed), register a batch, anchor two sensor readings, transfer custody and POST payloads to the indexer. It prints the `batchId` it used.
-
-### 6. Verify (curl or frontend)
-
-API:
-
-```bash
-curl http://localhost:4000/verify/<BATCHID>
-```
-
-Frontend:
-
-```bash
-cd frontend
-npm run dev
-# open http://localhost:3000 and go to /verify
-```
-
-Scan the QR or paste the `batchId`. The UI shows custody timeline, sensor readings, and a risk badge.
+* `hardhat`, `@nomicfoundation/hardhat-toolbox` (or minimal Hardhat + ethers)
+* `sqlite3`
+* `express`, `cors`, `body-parser`
+* `@zxing/browser` (frontend QR scanning)
+* `node-fetch` (demoFlow)
+* others in `package.json` (run `npm install`)
 
 ---
 
-## `.env` example (DO NOT COMMIT)
+## .env (example)
 
-Create `.env` in the project root:
+Create a `.env` at project root (DO NOT commit it). Example:
 
-```
+```env
+# local hardhat node RPC
 RPC_URL=http://127.0.0.1:8545
-CONTRACT_ADDRESS=        # leave empty to let demoFlow deploy
+
+# set to deployed contract address (or leave empty to have demoFlow deploy and print)
+CONTRACT_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
+
+# indexer
 ARTIFACT_PATH=./artifacts/contracts/CustodyRegistry.sol/CustodyRegistry.json
 DB_PATH=./supplychain.sqlite
 START_BLOCK=0
@@ -179,126 +78,276 @@ PORT=4000
 
 ---
 
-## Useful scripts
+## Full setup & run (from scratch)
 
-* `npx hardhat compile` — compile contracts
-* `npx hardhat node` — start local chain
-* `npx hardhat run scripts/demoFlow.js --network localhost` — run demo flow
-* `node indexer.js` — start indexer & API
-* `node scripts/print_handoffs.js` — print handoffs from DB
-* `node scripts/migrate_add_actors_and_payload_cols.js` — add actors/payload columns
-* `node scripts/seed_actors.js` — seed friendly names
+Below are step-by-step commands and the reason for each. Use one terminal per long-running process.
+
+> **Note**: If you are on Windows PowerShell and `npx` refuses due to script restrictions, run the commands in **CMD** or enable script execution: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` (careful, only if you understand the security implications). Alternatively run `npx` from Git Bash.
+
+### 1) Install dependencies
+
+From project root:
+
+```bash
+npm install
+```
+
+If you face `ERESOLVE` peer dependency errors when doing `npx hardhat` or `create-next-app`, you can use:
+
+```bash
+npm install --legacy-peer-deps
+```
+
+(or force `--force`, but prefer `--legacy-peer-deps`).
 
 ---
 
-## Recommended `.gitignore`
+### 2) Compile contracts
 
-Create `.gitignore` at the repo root with:
+```bash
+npx hardhat compile
+```
+
+This produces `artifacts/` and downloads compiler if needed. If you see pragma mismatch errors, ensure `hardhat.config.js` `solidity` field matches the `pragma` in `CustodyRegistry.sol` (example uses `^0.8.20`).
+
+---
+
+### 3) Start Hardhat local node (in Terminal A)
+
+```bash
+npx hardhat node
+```
+
+This prints a set of accounts and private keys and starts a JSON-RPC server at `http://127.0.0.1:8545`. Keep this terminal open.
+
+---
+
+### 4) Deploy (either via demoFlow or manually)
+
+Option A (demoFlow will deploy a fresh registry if `.env` `CONTRACT_ADDRESS` is empty):
+
+```bash
+npx hardhat run scripts/demoFlow.js --network localhost
+```
+
+Option B (deploy a contract then set `.env` CONTRACT\_ADDRESS):
+
+```bash
+npx hardhat run scripts/deploy.js --network localhost
+# (or use the Hardhat console to deploy manually)
+```
+
+`demoFlow.js` also anchors sensor hashes and transfers custody — it’s handy for demos.
+
+---
+
+### 5) Start the indexer (Terminal B)
+
+```bash
+node indexer.js
+```
+
+What it does:
+
+* Reads `ARTIFACT_PATH` and `CONTRACT_ADDRESS` from `.env`.
+* Indexes past events (from `START_BLOCK`) and subscribes to live events.
+* Exposes API: `GET /verify/:batchId` and `POST /storePayload` (for raw payloads).
+
+**Important**: start the indexer **before** you run `demoFlow` to make sure it receives live events. If you run demoFlow before indexer, you can either re-run demoFlow or index past events (indexer indexes past events on startup).
+
+---
+
+### 6) Run demoFlow (Terminal C)
+
+If `CONTRACT_ADDRESS` points to a deployed registry (or demoFlow deployed a fresh registry), run:
+
+```bash
+npx hardhat run scripts/demoFlow.js --network localhost
+```
+
+`demoFlow` does:
+
+* registerBatch
+* anchorSensor (2 readings, posts raw payload to indexer)
+* transferCustody
+
+It prints tx hashes and reading hashes and instructs you to `curl` the verify API.
+
+---
+
+### 7) Verify via HTTP (Terminal D) or browser
+
+Use the indexer API:
+
+```bash
+curl http://localhost:4000/verify/<BATCHID>
+```
+
+Example (demoFlow batchId printed in script):
+
+```bash
+curl http://localhost:4000/verify/0x25bebd...
+```
+
+This returns JSON:
+
+```json
+{
+  "batch": {...},
+  "handoffs": [{id, batch_id, from_addr, to_addr, time}],
+  "sensors": [{id, reading_hash, signer, time, raw_payload, tempC, nonce}],
+  "risk": { score, reasons, label }
+}
+```
+
+---
+
+### 8) Frontend (Next.js) — Scanner & UI
+
+Go to `frontend`:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Then open `http://localhost:3000` and go to the verify page (e.g. `/verify`). Use the scan button or paste a batch id. The camera uses `@zxing/browser` — browser will ask for camera permission.
+
+**If QR camera keeps scanning in a loop**: the frontend code sample included stops the camera on first result — ensure your `page.tsx` has the stop logic and you are not continuously re-calling `startScanner()`.
+
+---
+
+## Helpful scripts (already in repo)
+
+* `scripts/demoFlow.js` — demo flow for registering, anchoring, transferring.
+* `scripts/inspect_recent_txs.js` — decodes recent txs to see logs.
+* `scripts/print_handoffs.js` — prints the `handoffs` table from sqlite.
+* `scripts/migrate_add_actors_and_payload_cols.js` — DB migration to add actors & parsed fields.
+* `scripts/seed_actors.js` — seed friendly names.
+* `scripts/add_indexes.js` — add unique indexes.
+
+---
+
+## `.gitignore` (recommended)
+
+Add this to project root (DO NOT commit `.env`, DB, artifacts):
 
 ```
-# Node & build
 node_modules/
-dist/
-build/
-.next/
-out/
-
-# Hardhat artifacts
 artifacts/
 cache/
 typechain/
-
-# Env & DB
+coverage/
+.next/
+out/
+dist/
 .env
 .env.*
 *.sqlite
 *.sqlite-journal
-supplychain.sqlite
-
-# OS & editor
+logs/
+*.log
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
 ```
 
----
-
-## Troubleshooting
-
-* **embedded git repo: frontend**
-  If `frontend/` contains its own `.git` (nested repo), either remove `frontend/.git` to make it part of the mono-repo or add the frontend as a submodule.
-
-* **Indexer says "No custody transfers recorded"**
-  Ensure the indexer was running when demoFlow executed. If not, restart indexer and re-run demoFlow, or delete `supplychain.sqlite` and start indexer to re-index from block 0.
-
-* **Timestamps look wrong (1970)**
-  Raw payload `ts` may be in milliseconds while on-chain timestamps are seconds. The UI handles both by normalizing to milliseconds.
-
-* **QR camera keeps scanning in a loop**
-  The frontend stops the camera on the first successful scan; ensure your browser grants camera permission and that the page code is the updated version.
-
-* **`Cannot find module artifacts/...`**
-  Run `npx hardhat compile` from repo root so artifacts exist.
+If `frontend` was a separate Git repo and you want it included in the main repository, remove `frontend/.git` (or use Git submodule). See repository notes.
 
 ---
 
-## Data model (short)
+## Troubleshooting (common issues & fixes)
 
-* `batches`: `{ batch_id, ipfs_cid, manufacturer, created_at }`
-* `handoffs`: `{ id, batch_id, from_addr, to_addr, time }` (time = unix seconds)
-* `sensors`: `{ id, batch_id, reading_hash, signer, time, raw_payload, tempC, payload_ts, nonce }`
-* `actors` (off-chain): `{ address, name, role }` — used for friendly names in UI
+* **`Cannot find module artifacts/.../CustodyRegistry.json`**
+  Run `npx hardhat compile` from project root. Also run scripts with `npx hardhat run` if they expect Hardhat runtime.
+
+* **`Error HH606 pragma statement don't match`**
+  Make sure `hardhat.config.js` solidity version matches `pragma` in contracts. Example: `solidity: "0.8.20"`.
+
+* **`npx hardhat` failing with peer/ERESOLVE while installing toolbox**
+  Use `npm install --legacy-peer-deps` or install specific package versions (or create project without toolbox).
+
+* **PowerShell `npx.ps1 cannot be loaded`**
+  Run commands in CMD/Git Bash or set execution policy: `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser` (only if you understand security implications).
+
+* **Indexer shows `No custody transfers recorded`**
+  Ensure indexer was running before demoFlow; otherwise restart indexer and re-run demoFlow. You can also delete `supplychain.sqlite` to force reindex from `START_BLOCK=0` then run indexer.
+
+* **Duplicate DB rows**
+  Add unique indexes and use `INSERT OR IGNORE` in `indexer.js` handlers. Use `storePayload` to `UPDATE` existing sensor rows rather than insert duplicates.
+
+* **Timestamp confusion** (1970/incorrect)
+  Raw payload `ts` may be milliseconds while chain `time` is seconds. Normalise: store `payload_ts` as ms in DB and convert seconds → ms when showing: `if (ts < 1e12) ts *= 1000`.
+
+* **Frontend QR camera issues**
+  Make sure `@zxing/browser` version works with your React/Next version. Stop video tracks on scan: `video.srcObject.getTracks().forEach(t => t.stop())`.
+
+* **`embedded git repository: frontend` warning when `git add .`**
+  Remove nested `.git` if you want `frontend` as part of repo: `rm -rf frontend/.git` and `git rm -r --cached frontend; git add frontend; git commit -m "Include frontend subfolder"`.
 
 ---
 
-## Security notes & caveats
+## API — quick reference
 
-* Demo only — **not production**.
-* For production you must:
+* `GET /verify/:batchId`
+  Returns: JSON with `batch`, `handoffs`, `sensors`, `risk`.
 
-  * Verify IoT signatures server-side (recover signer on indexer),
-  * Add device registration and key management,
-  * Harden the indexer and consider decentralised storage for raw payloads (IPFS + pinning),
-  * Rotate keys and never commit `.env`.
+* `POST /storePayload`
+  Body: `{ batchId, readingHash, rawPayload }`
+  Indexer endpoint to attach raw payload JSON (from IoT device or demoFlow) to a previously anchored reading.
+
+---
+
+## Data model & what you see in UI
+
+* `batch`: `{ batch_id, ipfs_cid, manufacturer, created_at }`
+* `handoff`: `{ id, batch_id, from_addr, to_addr, time }` (time = unix seconds)
+* `sensor`: `{ id, batch_id, reading_hash, signer, time, raw_payload, tempC, payload_ts, nonce }`
+
+  * `raw_payload` is JSON (stringified), may contain `tempC`, `ts` (ms), `nonce`.
+* `risk`: `{ score, reasons[], label }` — simple heuristics (origin present, custody continuity, sensor thresholds).
+
+In the frontend we display friendly names via `actors` table (seeded by `scripts/seed_actors.js`), `short_hash`, and parsed payload fields (temp, nonce, readable time).
+
+---
+
+## Security & notes
+
+* This is a hackathon/demo prototype — do **not** use this as-is in production. Signed sensor data MUST be verified on the server (recover signer from signature), private keys must be managed securely, and off-chain indexer trust model must be hardened.
+* Do not commit `.env` or private keys.
+* If you committed secrets by mistake, rotate keys and consider rewriting Git history (advanced).
+
+---
+
+## Suggested next steps / improvements
+
+* Verify and recover signer signature server-side — ensure `anchorSensor` includes signature bytes and validate ECDSA on indexer.
+* Add role management on-chain (operators, whitelists).
+* Integrate IPFS for product metadata (store `ipfs_cid` during registerBatch).
+* Add simple anomaly detection (temperature spikes) to indexer to set risk reasons.
+* Add on-chain registry of verified devices and manufacturer PKI.
 
 ---
 
 ## Contributing
 
-1. Fork the repo.
-2. Create a feature branch: `git checkout -b feat/your-feature`.
-3. Make changes, commit and push your branch.
-4. Open a Pull Request describing your changes.
+PRs welcome — make a small change, open a PR, and include a short description of what you changed. For big changes open an issue first.
 
 ---
 
-## License
+## License & credits
 
-MIT — add a `LICENSE` file if you want to publish under the MIT license.
-
----
-
-## Acknowledgements
-
-Built as a hackathon / demo project. Uses Hardhat, Ethers, @zxing/browser, Express and SQLite.
+* MIT License (add `LICENSE` file if you want explicit license).
+* Built for HackAP 2025 / demo & learning purposes.
 
 ---
 
-If you'd like, I can also:
+## Contact
 
-* add a short `CONTRIBUTING.md` and `CODE_OF_CONDUCT`,
-* generate a polished `LICENSE` file (MIT),
-* or produce a small demo GIF for you (I can provide a script to record a demo flow if you want to create one).
+If you want me to:
 
-```
-
---- 
-
-If you want, I can now:
-- create a `LICENSE` file (MIT) for you,
-- generate a `CONTRIBUTING.md`, or
-- produce a small `fix_git.ps1` / `fix_git.sh` script to remove nested `.git` and apply `.gitignore` automatically.
-
-Which would you like next?
-```
+* produce a ready-to-paste `indexer.js` with idempotent `INSERT OR IGNORE`,
+* provide the exact `page.tsx` UI changes for better hash/nonce display,
+* or add a small script to convert your nested `frontend` repo into a submodule or remove `.git`
