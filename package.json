@@ -1,0 +1,27 @@
+{
+  "name": "supplychain-hack",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "compile": "npx hardhat compile",
+    "node": "npx hardhat node --hostname 127.0.0.1",
+    "indexer": "node indexer.js",
+    "demo": "npx hardhat run scripts/demoFlow.js --network localhost",
+    "deploy": "npx hardhat run scripts/deploy.js --network localhost"
+  },
+  "devDependencies": {
+    "@nomiclabs/hardhat-ethers": "^2.2.2",
+    "@nomiclabs/hardhat-waffle": "^2.0.3",
+    "ethers": "5.8.0",
+    "hardhat": "^2.22.10"
+  },
+  "dependencies": {
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^4.18.2",
+    "node-fetch": "^2.6.12",
+    "qrcode.react": "^4.2.0",
+    "sqlite3": "^5.1.6"
+  }
+}
