@@ -223,9 +223,6 @@ Then open `http://localhost:3000` and go to the verify page (e.g. `/verify`). Us
 * `scripts/demoFlow.js` — demo flow for registering, anchoring, transferring.
 * `scripts/inspect_recent_txs.js` — decodes recent txs to see logs.
 * `scripts/print_handoffs.js` — prints the `handoffs` table from sqlite.
-* `scripts/migrate_add_actors_and_payload_cols.js` — DB migration to add actors & parsed fields.
-* `scripts/seed_actors.js` — seed friendly names.
-* `scripts/add_indexes.js` — add unique indexes.
 
 ---
 
@@ -346,8 +343,4 @@ PRs welcome — make a small change, open a PR, and include a short description 
 
 ## Contact
 
-If you want me to:
-
-* produce a ready-to-paste `indexer.js` with idempotent `INSERT OR IGNORE`,
-* provide the exact `page.tsx` UI changes for better hash/nonce display,
-* or add a small script to convert your nested `frontend` repo into a submodule or remove `.git`
+* For any other detailes
