@@ -65,6 +65,7 @@ function parsePayload(raw) {
 
 function initDb() {
   db.serialize(() => {
+    // Create tables (base schema). sensors includes new columns in CREATE so new DBs are OK.
     db.run(`
       CREATE TABLE IF NOT EXISTS batches (
         batch_id TEXT PRIMARY KEY,
@@ -73,6 +74,7 @@ function initDb() {
         created_at INTEGER
       )
     `);
+
     db.run(`
       CREATE TABLE IF NOT EXISTS handoffs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,6 +85,9 @@ function initDb() {
         UNIQUE(batch_id, from_addr, to_addr, time)
       )
     `);
+
+    // sensors table: include columns we expect (including tempC, payload_ts, nonce).
+    // payload_ts is stored as INTEGER (milliseconds since epoch).
     db.run(`
       CREATE TABLE IF NOT EXISTS sensors (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,11 +95,42 @@ function initDb() {
         reading_hash TEXT UNIQUE,
         signer TEXT,
         time INTEGER,
-        raw_payload TEXT
+        raw_payload TEXT,
+        tempC REAL,
+        payload_ts INTEGER,
+        nonce TEXT
       )
-    `);
+    `, (err) => {
+      if (err) console.error('create sensors table error', err);
+    });
+
+    // After creating (or if table existed) ensure missing columns exist (safe for upgrades).
+    db.all(`PRAGMA table_info(sensors)`, (err, rows) => {
+      if (err) {
+        console.error('PRAGMA table_info error', err);
+        return;
+      }
+      const cols = (rows || []).map(r => r.name);
+      const addIfMissing = async (colName, colDef) => {
+        if (!cols.includes(colName)) {
+          console.log(`Adding missing sensors column: ${colName} ${colDef}`);
+          db.run(`ALTER TABLE sensors ADD COLUMN ${colName} ${colDef}`, (aerr) => {
+            if (aerr) console.error(`Failed to add column ${colName}:`, aerr);
+          });
+        }
+      };
+      // run checks
+      addIfMissing('tempC', 'REAL');
+      addIfMissing('payload_ts', 'INTEGER'); // ms since epoch
+      addIfMissing('nonce', 'TEXT');
+    });
+
+    // Ensure indexes
+    db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sensors_reading_hash ON sensors(reading_hash)`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_handoffs_batch_time ON handoffs(batch_id, time)`);
   });
 }
+
 
 // Helpers
 function insertBatch(batchId, ipfsCid, manufacturer, time) {
@@ -378,48 +414,65 @@ app.post('/storePayload', async (req, res) => {
   const { batchId, readingHash, rawPayload } = req.body;
   if (!readingHash || !batchId) return res.status(400).send({ ok: false, reason: 'missing' });
 
-  const rawStr = typeof rawPayload === 'string' ? rawPayload : JSON.stringify(rawPayload);
   const parsed = parsePayload(rawPayload);
+  const rawStr = (typeof rawPayload === 'string') ? rawPayload : JSON.stringify(rawPayload);
 
-  // compute tempC, payload_ts, nonce from rawPayload (if present)
-  const tempC = parsed?.tempC ?? null;
-  // Convert ts in payload to clock format hh:mm:ss:ms
+  // Extract numeric temp and normalized payload timestamp (ms)
+  let tempC = null;
   let payload_ts = null;
-  if (parsed?.ts) {
-    const n = Number(parsed.ts);
-    // If ts looks like seconds (<1e12), convert to ms
-    const ms = (n < 1e12) ? n * 1000 : n;
-    const date = new Date(ms);
-    const pad = (num, size = 2) => String(num).padStart(size, '0');
-    payload_ts = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}:${pad(date.getMilliseconds(), 3)}`;
-  }
-  const nonce = parsed?.nonce ?? null;
+  let nonce = null;
 
-  // Update existing sensor row
+  if (parsed && typeof parsed === 'object') {
+    if ('tempC' in parsed) {
+      const v = Number(parsed.tempC);
+      tempC = Number.isFinite(v) ? v : null;
+    }
+    if ('ts' in parsed) {
+      // Accept ts in seconds or milliseconds; store as milliseconds integer
+      const n = Number(parsed.ts);
+      if (Number.isFinite(n)) {
+        payload_ts = (n < 1e12) ? Math.floor(n * 1000) : Math.floor(n);
+      }
+    }
+    if ('nonce' in parsed) {
+      nonce = parsed.nonce != null ? String(parsed.nonce) : null;
+    }
+  }
+
+  // Update existing sensor row (if event already created it) with parsed fields.
   db.run(
-    `UPDATE sensors SET raw_payload = ?, tempC = COALESCE(?, tempC), payload_ts = COALESCE(?, payload_ts), nonce = COALESCE(?, nonce) WHERE reading_hash = ?`,
+    `UPDATE sensors
+     SET raw_payload = ?, tempC = COALESCE(?, tempC), payload_ts = COALESCE(?, payload_ts), nonce = COALESCE(?, nonce)
+     WHERE reading_hash = ?`,
     [rawStr, tempC, payload_ts, nonce, readingHash],
     function (err) {
       if (err) {
         console.error('storePayload update error', err);
-        return res.status(500).send({ ok: false });
+        return res.status(500).send({ ok: false, error: err.message });
       }
-      // if no row updated (no previous SensorAnchored event), insert now
+
+      // If nothing updated (no SensorAnchored event yet), insert placeholder row.
       if (this.changes === 0) {
+        const nowSec = Math.floor(Date.now() / 1000);
         db.run(
-          `INSERT OR IGNORE INTO sensors (batch_id, reading_hash, raw_payload, tempC, payload_ts, nonce) VALUES (?, ?, ?, ?, ?, ?)`,
-          [batchId, readingHash, rawStr, tempC, payload_ts, nonce],
+          `INSERT OR IGNORE INTO sensors (batch_id, reading_hash, signer, time, raw_payload, tempC, payload_ts, nonce)
+           VALUES (?, ?, NULL, ?, ?, ?, ?, ?)`,
+          [batchId, readingHash, nowSec, rawStr, tempC, payload_ts, nonce],
           (err2) => {
-            if (err2) console.error('storePayload insert error', err2);
-            return res.send({ ok: true });
+            if (err2) {
+              console.error('storePayload insert error', err2);
+              return res.status(500).send({ ok: false, error: err2.message });
+            }
+            return res.json({ ok: true, action: 'inserted' });
           }
         );
       } else {
-        return res.send({ ok: true });
+        return res.json({ ok: true, action: 'updated' });
       }
     }
   );
 });
+
 
 const PORT = process.env.PORT || 4000;
 
